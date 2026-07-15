@@ -1,7 +1,7 @@
 const db = require("../db");
 const { uuid, parseBody } = require("../utils");
 const { requireApi, sendJson } = require("../guard");
-const { syncFeed, syncAllFeeds } = require("../ical");
+const { syncFeed, syncAllFeeds, CHANNEL_LABEL } = require("../ical");
 
 function ownProperty(companyId, propertyId) {
   return db.prepare("SELECT * FROM properties WHERE id = ? AND company_id = ?").get(propertyId, companyId);
@@ -32,7 +32,14 @@ module.exports = ({ get, post, del }) => {
 
   del("/api/ical-feeds/:id", requireApi(async (req, res) => {
     const companyId = req.session.company.id;
-    db.prepare("DELETE FROM ical_feeds WHERE id=? AND company_id=?").run(req.params.id, companyId);
+    const feed = db.prepare("SELECT * FROM ical_feeds WHERE id=? AND company_id=?").get(req.params.id, companyId);
+    if (!feed) return sendJson(res, 404, { error: "Conexión no encontrada" });
+    // Al desconectar un calendario, eliminamos también las reservas que había
+    // importado (identificadas por venir de "ical" para esa vivienda y canal),
+    // para no dejar reservas huérfanas si el usuario decide reconectar de cero.
+    const label = CHANNEL_LABEL[feed.channel] || feed.channel;
+    db.prepare("DELETE FROM reservations WHERE company_id=? AND property_id=? AND source='ical' AND channel=?").run(companyId, feed.property_id, label);
+    db.prepare("DELETE FROM ical_feeds WHERE id=?").run(feed.id);
     sendJson(res, 200, { ok: true });
   }));
 
