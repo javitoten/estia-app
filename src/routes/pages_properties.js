@@ -80,7 +80,8 @@ module.exports = ({ get }) => {
     const tabs = [
       ["resumen", "Resumen"], ["invoices", "Facturas"], ["expenses", "Gastos"], ["incomes", "Ingresos"],
       ["cleanings", "Limpiezas"], ["maintenance", "Mantenimiento"], ["inventory", "Inventario"],
-      ["documents", "Documentación"], ["incidents", "Incidencias"], ["profitability", "Rentabilidad"], ["history", "Historial"],
+      ["documents", "Documentación"], ["incidents", "Incidencias"], ["channels", "Canales"],
+      ["profitability", "Rentabilidad"], ["history", "Historial"],
     ];
     const tabNav = tabs.map(([k, label]) => `<a class="tab ${tab === k ? "active" : ""}" href="/properties/${p.id}?tab=${k}">${label}</a>`).join("");
 

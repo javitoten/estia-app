@@ -69,7 +69,10 @@ module.exports = ({ get }) => {
           <div class="btn btn-secondary btn-sm" style="pointer-events:none;text-transform:capitalize;">${monthLabel}</div>
           <a class="btn btn-secondary btn-sm" href="/calendar?y=${nextM > 11 ? year + 1 : year}&m=${nextM % 12}">›</a>
         </div>
-        <a class="btn btn-secondary btn-sm" href="/calendar">Hoy</a>
+        <div class="flex gap-8">
+          <button class="btn btn-secondary btn-sm" id="btnSyncCal">Sincronizar canales</button>
+          <a class="btn btn-secondary btn-sm" href="/calendar">Hoy</a>
+        </div>
       </div>
       <div class="calendar-grid">
         ${WEEKDAYS.map((w) => `<div class="calendar-head">${w}</div>`).join("")}
@@ -82,7 +85,20 @@ module.exports = ({ get }) => {
         <div class="legend-item"><span class="legend-dot" style="background:${EVENT_COLORS.maintenance_c}"></span>Reparaciones</div>
         <div class="legend-item"><span class="legend-dot" style="background:${EVENT_COLORS.maintenance_p}"></span>Revisiones</div>
         <div class="legend-item"><span class="legend-dot" style="background:${EVENT_COLORS.document}"></span>Vencimientos</div>
-      </div>`;
+      </div>
+      <script>
+        document.getElementById('btnSyncCal').addEventListener('click', async function () {
+          this.disabled = true; this.textContent = 'Sincronizando…';
+          try {
+            const r = await apiCall('/api/ical/sync-all', 'POST');
+            toast('Sincronizado: ' + (r.created||0) + ' nuevas, ' + (r.updated||0) + ' actualizadas');
+            setTimeout(() => location.reload(), 700);
+          } catch (err) {
+            toast(err.message, 'error');
+            this.disabled = false; this.textContent = 'Sincronizar canales';
+          }
+        });
+      </script>`;
 
     sendHtml(res, 200, layout({
       title: "Calendario", subtitle: "Vista unificada de toda la operación",

@@ -21,7 +21,6 @@ function findCategory(companyId, text) {
 function answerQuestion(companyId, question) {
   const t = norm(question);
 
-  // Most / least profitable property
   if ((t.includes("mas rentable") || t.includes("mejor propiedad") || t.includes("mas beneficio")) ) {
     const ranked = allPropertiesRanked(companyId);
     if (!ranked.length) return "Todavía no tienes propiedades con datos suficientes para calcular rentabilidad.";
@@ -35,7 +34,6 @@ function answerQuestion(companyId, question) {
     return `La propiedad menos rentable es ${bottom.property.name}, con un beneficio de ${formatCurrency(bottom.profit)} y un margen del ${bottom.margin.toFixed(1)}%.`;
   }
 
-  // Spending on a category over N months
   if (t.includes("gastado") || t.includes("gasto en") || t.includes("cuanto he gastado")) {
     const months = monthsBack(t);
     const cat = findCategory(companyId, t);
@@ -50,7 +48,6 @@ function answerQuestion(companyId, question) {
     return `El gasto total de los últimos ${months} meses ha sido de ${formatCurrency(total)}.`;
   }
 
-  // Providers with most spend
   if (t.includes("proveedor")) {
     const rows = db.prepare(`SELECT provider_name, COALESCE(SUM(amount),0) total, COUNT(*) n FROM invoices
       WHERE company_id = ? AND provider_name IS NOT NULL GROUP BY provider_name ORDER BY total DESC LIMIT 5`).all(companyId);
@@ -59,7 +56,6 @@ function answerQuestion(companyId, question) {
     return `Los proveedores con más gasto son:\n${lines.join("\n")}`;
   }
 
-  // Monthly financial summary
   if (t.includes("resumen financiero") || t.includes("resumen del mes") || (t.includes("resumen") && t.includes("mes"))) {
     const wantsLastMonth = t.includes("pasado") || t.includes("anterior");
     const { start, end } = monthBounds(wantsLastMonth ? -1 : 0);
@@ -69,7 +65,6 @@ function answerQuestion(companyId, question) {
     return `Resumen de ${label}: ingresos ${formatCurrency(income)}, gastos ${formatCurrency(expense)}, beneficio ${formatCurrency(income - expense)} (margen ${income > 0 ? ((income - expense) / income * 100).toFixed(1) : 0}%).`;
   }
 
-  // Licenses / documents expiring
   if (t.includes("licencia") || t.includes("caduc") || t.includes("vence") || t.includes("vencimiento")) {
     const alerts = upcomingDocumentAlerts(companyId, 120).filter((a) => !t.includes("licencia") || a.type === "license");
     if (!alerts.length) return "No hay documentos próximos a caducar en los próximos meses.";
@@ -77,7 +72,6 @@ function answerQuestion(companyId, question) {
     return `Estos son los documentos que caducan próximamente:\n${lines.join("\n")}`;
   }
 
-  // Open incidents
   if (t.includes("incidencia")) {
     const rows = db.prepare(`SELECT i.*, p.name as pname FROM incidents i JOIN properties p ON p.id=i.property_id WHERE i.company_id=? AND i.status != 'resolved' ORDER BY i.priority DESC`).all(companyId);
     if (!rows.length) return "No tienes incidencias abiertas ahora mismo. 🎉";
@@ -85,13 +79,12 @@ function answerQuestion(companyId, question) {
     return `Incidencias abiertas:\n${lines.join("\n")}`;
   }
 
-  // Occupancy / reservations
   if (t.includes("ocupacion") || t.includes("reservas")) {
     const n = db.prepare("SELECT COUNT(*) c FROM reservations WHERE company_id=? AND checkin >= date('now','-30 day')").get(companyId).c;
     return `En los últimos 30 días se han registrado ${n} reservas en tu cartera.`;
   }
 
-  return "No he entendido bien la pregunta. Puedo ayudarte con: rentabilidad por vivienda, gasto por categoría o proveedor, resumen financiero del mes, documentos y licencias por caducar, e incidencias abiertas. Prueba a reformular la pregunta con alguno de esos temas.";
+  return null;
 }
 
 module.exports = ({ post }) => {
@@ -100,7 +93,10 @@ module.exports = ({ post }) => {
     const companyId = req.session.company.id;
     const question = (b.question || "").trim();
     if (!question) return sendJson(res, 400, { error: "Escribe una pregunta." });
-    const answer = answerQuestion(companyId, question);
+    let answer = answerQuestion(companyId, question);
+    if (answer === null) {
+      answer = "No he entendido bien la pregunta. Puedo ayudarte con: rentabilidad por vivienda, gasto por categoría o proveedor, resumen financiero del mes, documentos y licencias por caducar, e incidencias abiertas. Prueba a reformular la pregunta con alguno de esos temas.";
+    }
     db.prepare("INSERT INTO ai_conversations (id, company_id, user_id, question, answer) VALUES (?,?,?,?,?)").run(
       uuid(), companyId, req.session.user.id, question, answer
     );

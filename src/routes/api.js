@@ -246,4 +246,5 @@ module.exports = ({ get, post, put, del }) => {
   }));
 
   require("./ai")({ post });
+  require("./ical")({ get, post, del });
 };

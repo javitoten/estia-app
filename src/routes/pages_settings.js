@@ -1,7 +1,7 @@
 const db = require("../db");
 const { layout } = require("../render");
 const { requirePage, sendHtml } = require("../guard");
-const { escapeHtml, formatDate } = require("../utils");
+const { escapeHtml, formatDate, formatDateTime } = require("../utils");
 const { emptyState, modal } = require("../components");
 const { initials } = require("../render");
 
@@ -63,21 +63,35 @@ module.exports = ({ get }) => {
           <div class="field"><label>Color</label><input type="color" name="color" value="#0E7C6B"></div>
           <button type="submit" class="btn btn-primary" style="width:100%;">Crear</button></form>` })}`;
     } else if (tab === "integrations") {
-      const integrations = [
-        ["Airbnb", "Sincroniza reservas, calendario e ingresos", false],
-        ["Booking.com", "Sincroniza reservas y calendario", false],
-        ["Vrbo", "Sincroniza reservas y calendario", false],
-        ["Google Calendar", "Exporta el calendario operativo", false],
-        ["Google Drive / Dropbox", "Copia de seguridad de documentación", false],
-        ["Holded / Quipu", "Exportación contable (España)", false],
-        ["QuickBooks / Xero", "Exportación contable (internacional)", false],
-        ["Stripe", "Cobro de suscripción y pagos", false],
+      const feeds = db.prepare(`SELECT f.*, p.name as pname FROM ical_feeds f JOIN properties p ON p.id=f.property_id WHERE f.company_id=? ORDER BY f.created_at DESC`).all(companyId);
+      const feedLabel = { airbnb: "Airbnb", booking: "Booking.com", vrbo: "Vrbo", other: "Otro" };
+      const feedRows = feeds.map((f) => `<tr>
+        <td><span class="badge badge-blue">${feedLabel[f.channel] || f.channel}</span></td>
+        <td><a class="row-link" href="/properties/${f.property_id}?tab=channels">${escapeHtml(f.pname)}</a></td>
+        <td>${f.last_synced_at ? formatDateTime(f.last_synced_at) : "Sin sincronizar"}</td>
+        <td>${(f.last_status || "").startsWith("error") ? `<span class="badge badge-coral">Error</span>` : f.last_synced_at ? `<span class="badge badge-teal">${f.events_count || 0} reservas</span>` : `<span class="badge badge-gray">Pendiente</span>`}</td>
+      </tr>`).join("");
+
+      const otherIntegrations = [
+        ["Google Calendar", "Exporta el calendario operativo"],
+        ["Google Drive / Dropbox", "Copia de seguridad de documentación"],
+        ["Holded / Quipu", "Exportación contable (España)"],
+        ["QuickBooks / Xero", "Exportación contable (internacional)"],
+        ["Stripe", "Cobro de suscripción y pagos"],
       ];
-      body = `<div class="grid grid-2">${integrations.map(([name, desc]) => `
-        <div class="card flex justify-between items-center">
-          <div><strong>${name}</strong><div class="text-sm text-gray">${desc}</div></div>
-          <button class="btn btn-secondary btn-sm" disabled>Próximamente</button>
-        </div>`).join("")}</div>`;
+
+      body = `
+        <div class="card mb-16">
+          <div class="card-title">Airbnb, Booking.com y Vrbo <span class="badge badge-teal">Disponible</span></div>
+          <p class="text-sm text-gray" style="margin-top:-4px;">Conecta el calendario de cada vivienda desde su propia ficha (pestaña "Canales"). Se importan las reservas automáticamente vía iCal, sin coste y sin esperar aprobación de ninguna plataforma. Aquí puedes ver el estado de todas tus conexiones.</p>
+          ${feeds.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Canal</th><th>Vivienda</th><th>Última sincronización</th><th>Estado</th></tr></thead><tbody>${feedRows}</tbody></table></div>`
+            : emptyState("Todavía no has conectado ningún calendario. Ve a la ficha de una vivienda → pestaña Canales.")}
+        </div>
+        <div class="grid grid-2">${otherIntegrations.map(([name, desc]) => `
+          <div class="card flex justify-between items-center">
+            <div><strong>${name}</strong><div class="text-sm text-gray">${desc}</div></div>
+            <button class="btn btn-secondary btn-sm" disabled>Próximamente</button>
+          </div>`).join("")}</div>`;
     }
 
     sendHtml(res, 200, layout({

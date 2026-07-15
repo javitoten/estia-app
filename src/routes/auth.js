@@ -65,7 +65,7 @@ module.exports = ({ get, post }) => {
   post("/login", async (req, res) => {
     const body = await parseBody(req);
     const user = db.prepare("SELECT * FROM users WHERE email = ?").get((body.email || "").trim().toLowerCase());
-    if (!user || !verifyPassword(body.password || "", user.password_hash)) {
+    if (!user || !user.password_hash || !verifyPassword(body.password || "", user.password_hash)) {
       return sendHtml(res, 401, loginPage("Email o contraseña incorrectos."));
     }
     const token = createSession(user.id);
