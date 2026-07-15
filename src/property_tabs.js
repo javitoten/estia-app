@@ -303,6 +303,61 @@ function tabProfitability(p, companyId) {
     </script>`;
 }
 
+// ---------------- CHANNELS (iCal) ----------------
+const CHANNEL_OPTIONS = [
+  ["airbnb", "Airbnb"],
+  ["booking", "Booking.com"],
+  ["vrbo", "Vrbo"],
+  ["other", "Otro"],
+];
+function tabChannels(p, companyId) {
+  const feeds = db.prepare("SELECT * FROM ical_feeds WHERE company_id=? AND property_id=? ORDER BY created_at DESC").all(companyId, p.id);
+  const rows = feeds.map((f) => {
+    let statusBadgeHtml;
+    if (!f.last_synced_at) statusBadgeHtml = `<span class="badge badge-gray">Sin sincronizar</span>`;
+    else if ((f.last_status || "").startsWith("error")) statusBadgeHtml = `<span class="badge badge-coral" title="${escapeHtml(f.last_status)}">Error</span>`;
+    else statusBadgeHtml = `<span class="badge badge-teal">${f.events_count || 0} reservas</span>`;
+    const label = { airbnb: "Airbnb", booking: "Booking.com", vrbo: "Vrbo", other: "Otro" }[f.channel] || f.channel;
+    return `<tr data-row>
+      <td><span class="badge badge-blue">${escapeHtml(label)}</span></td>
+      <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(f.url)}">${escapeHtml(f.url)}</td>
+      <td>${f.last_synced_at ? formatDateTime(f.last_synced_at) : "—"}</td>
+      <td>${statusBadgeHtml}</td>
+      <td class="flex gap-8">
+        <button class="btn btn-ghost btn-sm" onclick="syncOneFeed('${f.id}', this)">Sincronizar</button>
+        ${actionsCell("/api/ical-feeds/" + f.id, "¿Eliminar esta conexión de calendario?")}
+      </td>
+    </tr>`;
+  }).join("");
+  return `<div class="card">
+    <div class="card-title">Canales conectados <button class="btn btn-primary btn-sm" onclick="openModal('modalFeed')">+ Conectar calendario</button></div>
+    <p class="text-sm text-gray" style="margin-top:-6px;margin-bottom:14px;">Importa automáticamente las reservas de Airbnb, Booking o Vrbo pegando la URL de calendario (formato iCal / .ics) que cada plataforma ofrece gratis para cada anuncio. No hace falta esperar aprobación de ninguna API — solo el enlace del calendario.</p>
+    <div class="table-wrap"><table class="data"><thead><tr><th>Canal</th><th>URL del calendario</th><th>Última sincronización</th><th>Estado</th><th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="5">${emptyState("Todavía no has conectado ningún calendario externo.")}</td></tr>`}</tbody></table></div>
+  </div>
+  ${modal({ id: "modalFeed", title: "Conectar calendario", body: `
+    <form id="formFeed" data-api="/api/ical-feeds" data-method="POST" data-success="Calendario conectado y sincronizado">
+      <input type="hidden" name="property_id" value="${p.id}">
+      <div class="field"><label>Plataforma</label><select name="channel">${CHANNEL_OPTIONS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></div>
+      <div class="field"><label>URL del calendario (iCal / .ics)</label><input type="url" name="url" required placeholder="https://www.airbnb.com/calendar/ical/....ics"></div>
+      <p class="text-sm text-gray">En Airbnb: Anuncio → Calendario → Disponibilidad → Sincronizar calendarios → Exportar calendario. En Booking: Extranet → Tarifas y disponibilidad → Sincronización de calendarios.</p>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Conectar y sincronizar</button>
+    </form>` })}
+  <script>
+    async function syncOneFeed(id, btn) {
+      btn.disabled = true; const orig = btn.textContent; btn.textContent = '...';
+      try {
+        const r = await apiCall('/api/ical-feeds/' + id + '/sync', 'POST');
+        toast('Sincronizado: ' + r.created + ' nuevas, ' + r.updated + ' actualizadas');
+        setTimeout(() => location.reload(), 600);
+      } catch (err) {
+        toast(err.message, 'error');
+        btn.disabled = false; btn.textContent = orig;
+      }
+    }
+  </script>`;
+}
+
 // ---------------- HISTORY ----------------
 function tabHistory(p, companyId) {
   const rows = db.prepare(`
@@ -333,6 +388,7 @@ module.exports = function renderTab(tab, p, companyId) {
     case "incidents": return tabIncidents(p, companyId);
     case "profitability": return tabProfitability(p, companyId);
     case "history": return tabHistory(p, companyId);
+    case "channels": return tabChannels(p, companyId);
     default: return tabResumen(p, companyId);
   }
 };

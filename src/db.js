@@ -27,7 +27,9 @@ CREATE TABLE IF NOT EXISTS users (
   company_id TEXT NOT NULL REFERENCES companies(id),
   name TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
+  google_id TEXT,
+  avatar_url TEXT,
   role TEXT NOT NULL DEFAULT 'admin',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -143,6 +145,20 @@ CREATE TABLE IF NOT EXISTS reservations (
   checkout TEXT NOT NULL,
   amount REAL DEFAULT 0,
   status TEXT DEFAULT 'confirmed',
+  external_uid TEXT,
+  source TEXT DEFAULT 'manual',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS ical_feeds (
+  id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL REFERENCES companies(id),
+  property_id TEXT NOT NULL REFERENCES properties(id),
+  channel TEXT NOT NULL DEFAULT 'airbnb',
+  url TEXT NOT NULL,
+  last_synced_at TEXT,
+  last_status TEXT,
+  events_count INTEGER DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -235,5 +251,23 @@ CREATE TABLE IF NOT EXISTS ai_conversations (
 `;
 
 db.exec(SCHEMA);
+
+// ---------------------------------------------------------------------------
+// Migraciones ligeras: añaden columnas nuevas a bases de datos ya existentes
+// (creadas antes de que existieran estos campos) sin perder datos.
+// ---------------------------------------------------------------------------
+function ensureColumn(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+ensureColumn("reservations", "external_uid", "TEXT");
+ensureColumn("reservations", "source", "TEXT DEFAULT 'manual'");
+ensureColumn("users", "google_id", "TEXT");
+ensureColumn("users", "avatar_url", "TEXT");
+// password_hash ya no es obligatorio a nivel de aplicación para cuentas de Google
+// (SQLite no permite quitar NOT NULL fácilmente, pero la tabla ya se crea sin
+// esa restricción en instalaciones nuevas gracias al CREATE TABLE de arriba).
 
 module.exports = db;
