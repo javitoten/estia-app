@@ -2,8 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
-const { getSessionUser } = require("./src/auth");
-const { ensureDemoAccount } = require("./src/seed");
+const { restoreFromGitHub, scheduleBackups } = require("./src/backup");
 
 const PORT = process.env.PORT || 4000;
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -59,6 +58,11 @@ function serveUpload(req, res, pathname, session) {
   });
 }
 
+// getSessionUser se asigna en main(), después de restaurar la base de datos
+// desde la copia de seguridad remota (si está configurada), para no abrir
+// nunca una base de datos vacía teniendo una copia disponible.
+let getSessionUser;
+
 async function dispatch(req, res) {
   const parsed = new URL(req.url, "http://localhost");
   const pathname = decodeURIComponent(parsed.pathname);
@@ -107,18 +111,36 @@ const server = http.createServer((req, res) => {
   });
 });
 
-require("./src/routes/auth")({ get, post });
-require("./src/routes/pages")({ get });
-require("./src/routes/api")({ get, post, put, del });
-require("./src/routes/invoices")({ get, post, del });
+async function main() {
+  // 1. Restaurar la base de datos desde GitHub (si hay copia de seguridad
+  //    configurada) ANTES de que ningún módulo abra el fichero SQLite.
+  await restoreFromGitHub();
 
-ensureDemoAccount();
+  // 2. Ahora sí, cargar todo lo que depende de la base de datos.
+  ({ getSessionUser } = require("./src/auth"));
+  const { ensureDemoAccount } = require("./src/seed");
 
-server.listen(PORT, () => {
-  console.log("");
-  console.log("  Estia — Vacation Property OS");
-  console.log("  ------------------------------------");
-  console.log(`  App:   http://localhost:${PORT}`);
-  console.log("  Demo:  demo@estia.app / demo1234");
-  console.log("");
+  require("./src/routes/auth")({ get, post });
+  require("./src/routes/pages")({ get });
+  require("./src/routes/api")({ get, post, put, del });
+  require("./src/routes/invoices")({ get, post, del });
+
+  ensureDemoAccount();
+
+  server.listen(PORT, () => {
+    console.log("");
+    console.log("  Estia — Vacation Property OS");
+    console.log("  ------------------------------------");
+    console.log(`  App:   http://localhost:${PORT}`);
+    console.log("  Demo:  demo@estia.app / demo1234");
+    console.log("");
+  });
+
+  // 3. Copias de seguridad periódicas + copia final antes de apagarse.
+  scheduleBackups();
+}
+
+main().catch((err) => {
+  console.error("Fallo al iniciar Estia:", err);
+  process.exit(1);
 });
