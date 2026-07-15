@@ -113,4 +113,4 @@ function scheduleIcalSync(intervalMinutes) {
   if (timer.unref) timer.unref();
 }
 
-module.exports = { parseIcs, fetchIcsText, syncFeed, syncAllFeeds, scheduleIcalSync };
+module.exports = { parseIcs, fetchIcsText, syncFeed, syncAllFeeds, scheduleIcalSync, CHANNEL_LABEL };
